@@ -141,7 +141,7 @@ for pdf in CARTELLA.glob("*.pdf"):
         if len(descrizione) > MAX_DESCRIZIONE:
             descrizione = descrizione[:MAX_DESCRIZIONE].rstrip(" .-") + "…"
 
-        nuovo_nome = f"{data_file} - {descrizione} - {importo}€.pdf"
+        nuovo_nome = f"{data_file} ~ {descrizione} ~ {importo}€.pdf"
         destinazione = pdf.with_name(nuovo_nome)
 
         if destinazione == pdf:

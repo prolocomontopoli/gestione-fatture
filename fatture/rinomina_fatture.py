@@ -156,7 +156,7 @@ def nome_disponibile(percorso: Path) -> Path:
 for pdf in CARTELLA.glob("*.pdf"):
     try:
         data, fornitore, importo = estrai_dati(pdf)
-        nome_base = f"{data} - {fornitore} - {importo}€.pdf"
+        nome_base = f"{data} ~ {fornitore} ~ {importo}€.pdf"
 
         # Se il file ha già il nome atteso, o un suffisso numerico
         # aggiunto per una collisione, non rinominarlo di nuovo.
