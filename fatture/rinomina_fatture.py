@@ -15,79 +15,27 @@ PATTERN_IMPORTO = re.compile(
 )
 
 
-def estrai_importo(testo: str) -> str:
-    """Cerca prima un'etichetta 'Importo', poi 'Totale documento'."""
-
-    # Esclude la tabella dei pagamenti.
-    match_pagamenti = re.search(
-        r"\bModalità\s+pagamento\b",
-        testo,
-        flags=re.IGNORECASE
-    )
-    testo_documento = (
-        testo[:match_pagamenti.start()]
-        if match_pagamenti
-        else testo
-    )
-
-    # Prima scelta: importo associato all'etichetta "Importo".
-    # Esclude "Importo bollo".
-    etichette_importo = list(
-        re.finditer(
-            r"\bImporto\b(?!\s+bollo)",
-            testo_documento,
-            flags=re.IGNORECASE
-        )
-    )
-
-    # Prova dall'ultima etichetta utile, in genere la più vicina ai totali.
-    for etichetta in reversed(etichette_importo):
-        zona_importo = testo_documento[
-            etichetta.end():etichette_importo.end() + 300
-        ] if False else testo_documento[
-            etichetta.end():etichetta.end() + 300
-        ]
-
-        match_importo = PATTERN_IMPORTO.search(zona_importo)
-
-        if match_importo:
-            # Evita di interpretare "Arr." come l'importo cercato.
-            testo_prima_del_valore = zona_importo[:match_importo.start()]
-            if re.search(
-                r"\bArr\.?\b",
-                testo_prima_del_valore,
-                flags=re.IGNORECASE
-            ):
-                continue
-
-            return match_importo.group(0)
-
-    # Seconda scelta: "Totale documento".
-    match_totale = re.search(
-        r"\bTotale\s+documento\b",
-        testo_documento,
-        flags=re.IGNORECASE
-    )
-
-    if match_totale:
-        zona_totale = testo_documento[
-            match_totale.end():match_totale.end() + 500
-        ]
-        importi_totale = PATTERN_IMPORTO.findall(zona_totale)
-
-        if importi_totale:
-            return importi_totale[-1]
-
-    # Ultimo ripiego: usa l'ultimo importo trovato nel testo.
+def estrai_importo_ultima_pagina(testo: str) -> str:
+    """Restituisce l'ultimo importo con due decimali trovato nel testo."""
     importi = PATTERN_IMPORTO.findall(testo)
-    if importi:
-        return importi[-1]
 
-    raise ValueError("importo non trovato")
+    if not importi:
+        raise ValueError("importo non trovato nell'ultima pagina")
+
+    return importi[-1]
 
 
 def estrai_dati(pdf_path: Path) -> tuple[str, str, str]:
     reader = PdfReader(pdf_path)
+
+    if not reader.pages:
+        raise ValueError("PDF senza pagine")
+
+    # Cerca l'importo soltanto nell'ultima pagina.
+    testo_ultima_pagina = reader.pages[-1].extract_text() or ""
+    importo = estrai_importo_ultima_pagina(testo_ultima_pagina)
+
+    # Cerca la data e il fornitore nel testo del documento.
     testo = "\n".join(page.extract_text() or "" for page in reader.pages)
 
     # La prima data nel testo è normalmente la data della fattura.
@@ -98,7 +46,8 @@ def estrai_dati(pdf_path: Path) -> tuple[str, str, str]:
     giorno, mese, anno = match_data.groups()
     data = f"{anno}-{mese}-{giorno}"
 
-    # Limita la ricerca al riquadro del fornitore, prima di quello del cliente.
+    # Limita la ricerca al riquadro del fornitore,
+    # prima di quello del cliente.
     testo_fornitore = re.split(
         r"Cessionario/committente\s*\(cliente\)",
         testo,
@@ -133,8 +82,6 @@ def estrai_dati(pdf_path: Path) -> tuple[str, str, str]:
     if not fornitore:
         raise ValueError("nome del fornitore vuoto")
 
-    importo = estrai_importo(testo)
-
     return data, fornitore, importo
 
 
@@ -158,8 +105,8 @@ for pdf in CARTELLA.glob("*.pdf"):
         data, fornitore, importo = estrai_dati(pdf)
         nome_base = f"{data} ~ {fornitore} ~ {importo}€.pdf"
 
-        # Se il file ha già il nome atteso, o un suffisso numerico
-        # aggiunto per una collisione, non rinominarlo di nuovo.
+        # Evita di rinominare di nuovo file già elaborati,
+        # compresi quelli con un suffisso come "(1)".
         nome_gia_processato = re.fullmatch(
             re.escape(nome_base.removesuffix(".pdf"))
             + r"(?: \(\d+\))?\.pdf",
