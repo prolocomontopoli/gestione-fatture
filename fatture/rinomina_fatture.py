@@ -1,4 +1,5 @@
 from pathlib import Path
+import csv
 import re
 from pypdf import PdfReader
 
@@ -7,6 +8,7 @@ from pypdf import PdfReader
 DRY_RUN = False
 
 CARTELLA = Path(__file__).resolve().parent
+CATALOGO = CARTELLA / "catalogo_pdf.csv"
 
 # Importi come 202,89 oppure 1.234,56.
 # Accetta anche il punto come separatore decimale.
@@ -100,7 +102,52 @@ def nome_disponibile(percorso: Path) -> Path:
         numero += 1
 
 
-for pdf in CARTELLA.glob("*.pdf"):
+def pdf_nella_cartella() -> list[Path]:
+    """Restituisce i PDF direttamente contenuti nella cartella."""
+    return sorted(
+        (
+            percorso for percorso in CARTELLA.iterdir()
+            if percorso.is_file() and percorso.suffix.lower() == ".pdf"
+        ),
+        key=lambda percorso: percorso.name.lower(),
+    )
+
+
+def aggiorna_catalogo() -> None:
+    """Aggiunge al CSV i nomi dei PDF non ancora registrati."""
+    nomi_esistenti = set()
+
+    if CATALOGO.exists() and CATALOGO.stat().st_size > 0:
+        with CATALOGO.open("r", newline="", encoding="utf-8-sig") as file_csv:
+            lettore = csv.reader(file_csv)
+
+            for riga in lettore:
+                if riga and riga[0] != "nome_file":
+                    nomi_esistenti.add(riga[0])
+
+    nomi_pdf = sorted(pdf.name for pdf in pdf_nella_cartella())
+    nuovi_nomi = [nome for nome in nomi_pdf if nome not in nomi_esistenti]
+
+    catalogo_esistente = CATALOGO.exists() and CATALOGO.stat().st_size > 0
+    modalita = "a" if catalogo_esistente else "w"
+    codifica = "utf-8" if catalogo_esistente else "utf-8-sig"
+
+    with CATALOGO.open(modalita, newline="", encoding=codifica) as file_csv:
+        scrittore = csv.writer(file_csv)
+
+        if not catalogo_esistente:
+            scrittore.writerow(["nome_file"])
+
+        for nome in nuovi_nomi:
+            scrittore.writerow([nome])
+
+    print(
+        f"Catalogo aggiornato: {len(nuovi_nomi)} nuovi nomi aggiunti "
+        f"({CATALOGO.name})."
+    )
+
+
+for pdf in pdf_nella_cartella():
     try:
         data, fornitore, importo = estrai_dati(pdf)
         nome_base = f"{data} ~ {fornitore} ~ {importo}€.pdf"
@@ -128,3 +175,9 @@ for pdf in CARTELLA.glob("*.pdf"):
 
     except Exception as errore:
         print(f"Saltato {pdf.name}: {errore}")
+
+
+try:
+    aggiorna_catalogo()
+except Exception as errore:
+    print(f"Errore durante l'aggiornamento del catalogo: {errore}")
