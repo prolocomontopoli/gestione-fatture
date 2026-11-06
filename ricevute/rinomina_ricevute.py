@@ -78,7 +78,7 @@ def pdf_nella_cartella():
 
 
 def aggiorna_catalogo():
-    """Aggiunge al CSV i nomi dei PDF non ancora registrati."""
+    """Sincronizza il CSV con i PDF attualmente presenti nella cartella."""
     nomi_esistenti = set()
 
     if CATALOGO.exists() and CATALOGO.stat().st_size > 0:
@@ -90,24 +90,17 @@ def aggiorna_catalogo():
                     nomi_esistenti.add(riga[0])
 
     nomi_pdf = sorted(pdf.name for pdf in pdf_nella_cartella())
-    nuovi_nomi = [nome for nome in nomi_pdf if nome not in nomi_esistenti]
+    nuovi_nomi = set(nomi_pdf) - nomi_esistenti
+    rimossi = nomi_esistenti - set(nomi_pdf)
 
-    catalogo_esistente = CATALOGO.exists() and CATALOGO.stat().st_size > 0
-    modalita = "a" if catalogo_esistente else "w"
-    codifica = "utf-8" if catalogo_esistente else "utf-8-sig"
-
-    with CATALOGO.open(modalita, newline="", encoding=codifica) as file_csv:
+    with CATALOGO.open("w", newline="", encoding="utf-8-sig") as file_csv:
         scrittore = csv.writer(file_csv)
-
-        if not catalogo_esistente:
-            scrittore.writerow(["nome_file"])
-
-        for nome in nuovi_nomi:
-            scrittore.writerow([nome])
+        scrittore.writerow(["nome_file"])
+        scrittore.writerows([nome] for nome in nomi_pdf)
 
     print(
-        f"Catalogo aggiornato: {len(nuovi_nomi)} nuovi nomi aggiunti "
-        f"({CATALOGO.name})."
+        f"Catalogo sincronizzato: {len(nuovi_nomi)} aggiunti, "
+        f"{len(rimossi)} rimossi ({CATALOGO.name})."
     )
 
 

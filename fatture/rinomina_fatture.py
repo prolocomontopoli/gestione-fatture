@@ -54,14 +54,14 @@ def estrai_dati(pdf_path: Path) -> tuple[str, str, str]:
         r"Cessionario/committente\s*\(cliente\)",
         testo,
         maxsplit=1,
-        flags=re.IGNORECASE
+        flags=re.IGNORECASE,
     )[0]
 
     # Cerca "Denominazione" nel riquadro del fornitore.
     match_fornitore = re.search(
         r"\bDenominazione\s*:\s*(.+)",
         testo_fornitore,
-        flags=re.IGNORECASE
+        flags=re.IGNORECASE,
     )
 
     # Se il fornitore è una persona fisica, usa "Cognome nome".
@@ -69,7 +69,7 @@ def estrai_dati(pdf_path: Path) -> tuple[str, str, str]:
         match_fornitore = re.search(
             r"\bCognome\s+nome\s*:\s*(.+)",
             testo_fornitore,
-            flags=re.IGNORECASE
+            flags=re.IGNORECASE,
         )
 
     if not match_fornitore:
@@ -106,7 +106,8 @@ def pdf_nella_cartella() -> list[Path]:
     """Restituisce i PDF direttamente contenuti nella cartella."""
     return sorted(
         (
-            percorso for percorso in CARTELLA.iterdir()
+            percorso
+            for percorso in CARTELLA.iterdir()
             if percorso.is_file() and percorso.suffix.lower() == ".pdf"
         ),
         key=lambda percorso: percorso.name.lower(),
@@ -114,8 +115,13 @@ def pdf_nella_cartella() -> list[Path]:
 
 
 def aggiorna_catalogo() -> None:
-    """Aggiunge al CSV i nomi dei PDF non ancora registrati."""
-    nomi_esistenti = set()
+    """Mantiene nel CSV solo i PDF attualmente presenti nella cartella."""
+    nomi_attuali = sorted(
+        (pdf.name for pdf in pdf_nella_cartella()),
+        key=str.lower,
+    )
+
+    nomi_precedenti = set()
 
     if CATALOGO.exists() and CATALOGO.stat().st_size > 0:
         with CATALOGO.open("r", newline="", encoding="utf-8-sig") as file_csv:
@@ -123,27 +129,23 @@ def aggiorna_catalogo() -> None:
 
             for riga in lettore:
                 if riga and riga[0] != "nome_file":
-                    nomi_esistenti.add(riga[0])
+                    nomi_precedenti.add(riga[0])
 
-    nomi_pdf = sorted(pdf.name for pdf in pdf_nella_cartella())
-    nuovi_nomi = [nome for nome in nomi_pdf if nome not in nomi_esistenti]
+    nomi_attuali_set = set(nomi_attuali)
+    aggiunti = len(nomi_attuali_set - nomi_precedenti)
+    rimossi = len(nomi_precedenti - nomi_attuali_set)
 
-    catalogo_esistente = CATALOGO.exists() and CATALOGO.stat().st_size > 0
-    modalita = "a" if catalogo_esistente else "w"
-    codifica = "utf-8" if catalogo_esistente else "utf-8-sig"
-
-    with CATALOGO.open(modalita, newline="", encoding=codifica) as file_csv:
+    # Riscrive il catalogo da zero: i file eliminati non restano nel CSV.
+    with CATALOGO.open("w", newline="", encoding="utf-8-sig") as file_csv:
         scrittore = csv.writer(file_csv)
+        scrittore.writerow(["nome_file"])
 
-        if not catalogo_esistente:
-            scrittore.writerow(["nome_file"])
-
-        for nome in nuovi_nomi:
+        for nome in nomi_attuali:
             scrittore.writerow([nome])
 
     print(
-        f"Catalogo aggiornato: {len(nuovi_nomi)} nuovi nomi aggiunti "
-        f"({CATALOGO.name})."
+        f"Catalogo aggiornato: {aggiunti} nomi aggiunti, "
+        f"{rimossi} rimossi ({CATALOGO.name})."
     )
 
 
@@ -158,7 +160,7 @@ for pdf in pdf_nella_cartella():
             re.escape(nome_base.removesuffix(".pdf"))
             + r"(?: \(\d+\))?\.pdf",
             pdf.name,
-            flags=re.IGNORECASE
+            flags=re.IGNORECASE,
         )
 
         if nome_gia_processato:
